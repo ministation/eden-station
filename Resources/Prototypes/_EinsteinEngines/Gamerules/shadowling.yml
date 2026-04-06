@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Casha
 - type: entity
   parent: BaseGameRule
   id: Shadowling

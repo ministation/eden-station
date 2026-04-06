@@ -13,7 +13,7 @@
     xmlns:changelog="clr-namespace:Content.Client.Changelog"
     xmlns:animatedBackground="clr-namespace:Content.Client._OS.UI.AnimatedBackground">
 
-    <!-- Анимированный фон -->
+    <!-- РђРЅРёРјРёСЂРѕРІР°РЅРЅС‹Р№ С„РѕРЅ -->
     <animatedBackground:AnimatedBackgroundControl
         Access="Public"
         VerticalExpand="True"
@@ -75,7 +75,7 @@
                             <Button Name="CharacterSetup" Access="Public" Text="{Loc 'lobby-character-preview-panel-character-setup-button'}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinSize="250 50"/>
                             <!-- <Button Name="AntagTokensButton" Access="Public" Text="Антагонисты" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinSize="250 50"/> -->
                             <Button Name="OptionsButton" Access="Public" Text="{Loc 'ui-lobby-options-button'}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinSize="250 50"/>
-                            <Button Name="AuthorizationDiscordButton" StyleClasses="ButtonColorYellow" Access="Public" Text="Авторизация" MinSize="250 50"/>
+                            <Button Name="AuthorizationDiscordButton" StyleClasses="ButtonColorYellow" Access="Public" Text="РђРІС‚РѕСЂРёР·Р°С†РёСЏ" MinSize="250 50"/>
                             <Button Name="LeaveButton" StyleClasses="ButtonColorRed" Access="Public" Text="{Loc 'ui-lobby-leave-button'}" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinSize="250 50" />
                         </BoxContainer>
                     </PanelContainer>

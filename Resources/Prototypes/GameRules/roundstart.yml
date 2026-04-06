@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Casha
 # SPDX-FileCopyrightText: 2021 Vera Aguilera Puerto <6766154+Zumorica@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2022 Moony <moonheart08@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2022 Paul Ritter <ritter.paul1@googlemail.com>
@@ -101,7 +102,7 @@
 # SPDX-FileCopyrightText: 2024 username <113782077+whateverusername0@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2024 voidnull000 <18663194+voidnull000@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2024 whateverusername0 <whateveremail>
-# SPDX-FileCopyrightText: 2024 Арт <123451459+JustArt1m@users.noreply.github.com>
+# SPDX-FileCopyrightText: 2024 РђСЂС‚ <123451459+JustArt1m@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2025 Aiden <28298836+Aidenkrz@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2025 Armok <155400926+ARMOKS@users.noreply.github.com>
 # SPDX-FileCopyrightText: 2025 August Eymann <august.eymann@gmail.com>
@@ -157,15 +158,13 @@
   - type: SubGamemodes
     rules:
     - id: Thief
-      prob: 0.5
-    # Arcane-start
-    # - id: Heretic # goob edit
-    #   prob: 0.2
-    # Arcane-end
+      prob: 0.4 # CorvaxGoob-GameRulesTweak
+    - id: Heretic # goob edit
+      prob: 0.2 # CorvaxGoob-GameRulesTweak
     - id: Devil # Goob
-      prob: 0.02
+      prob: 0.1 # CorvaxGoob-GameRulesTweak
     - id: Shadowling # Goob
-      prob: 0.02
+      prob: 0.05 # CorvaxGoob-GameRulesTweak
 
 - type: entity
   parent: BaseGameRule
@@ -248,12 +247,13 @@
     objectives:
     - NukeopsDetonateObjective
 
+
 - type: entity
   parent: BaseNukeopsRule
   id: Nukeops
   components:
   - type: GameRule
-    minPlayers: 20
+    minPlayers: 15
   - type: LoadMapRule
     mapPath: /Maps/_Goobstation/Nonstations/nukieplanet.yml # goob edit
   - type: AntagSelection
@@ -264,17 +264,18 @@
       spawnerPrototype: SpawnPointNukeopsCommander
       startingGear: SyndicateCommanderGearFull
       unequipOldGear: true
-      chaosScore: 300
+      chaosScore: 300 # Goobstation
+      skills: # CorvaxGoob-Skills
+      - All
       roleLoadout:
       - RoleSurvivalNukie
       components:
-      - type: GlobalAntagonist # Orion
-        antagonistPrototype: globalAntagonistNukeops
-      - type: AdditionalLanguage # Orion
-        speaks:
-        - Codespeak
-        understands:
-        - Codespeak
+      # Mini edit start
+      - type: GhostPanelAntagonistMarker
+        name: ghost-panel-antagonist-nukeops-name
+        description: ghost-panel-antagonist-nukeops-description
+        priority: 10
+      # Mini edit end
       - type: NukeOperative
       - type: RandomMetadata
         nameSegments:
@@ -291,16 +292,17 @@
       startingGear: SyndicateOperativeMedicFull
       unequipOldGear: true
       chaosScore: 300 # Goobstation
+      skills: # CorvaxGoob-Skills
+      - All
       roleLoadout:
       - RoleSurvivalNukie
       components:
-      - type: GlobalAntagonist # Orion
-        antagonistPrototype: globalAntagonistNukeops
-      - type: AdditionalLanguage # Orion
-        speaks:
-        - Codespeak
-        understands:
-        - Codespeak
+      # Mini edit start
+      - type: GhostPanelAntagonistMarker
+        name: ghost-panel-antagonist-nukeops-name
+        description: ghost-panel-antagonist-nukeops-description
+        priority: 10
+      # Mini edit end
       - type: NukeOperative
       - type: RandomMetadata
         nameSegments:
@@ -316,21 +318,22 @@
     - prefRoles: [ Nukeops ]
       fallbackRoles: [ NukeopsCommander, NukeopsMedic ]
       spawnerPrototype: SpawnPointNukeopsOperative
-      max: 10 # Goobstation / 古布空间站 - 没有限制的核特工
+      max: 10 # Goobstation / еЏ¤еёѓз©єй—ґз«™ - жІЎжњ‰й™ђе€¶зљ„ж ёз‰№е·Ґ
       playerRatio: 16 # Goobstation
       chaosScore: 300 # Goobstation
       startingGear: SyndicateOperativeGearFull
       unequipOldGear: true
+      skills: # CorvaxGoob-Skills
+      - All
       roleLoadout:
       - RoleSurvivalNukie
       components:
-      - type: GlobalAntagonist # Orion
-        antagonistPrototype: globalAntagonistNukeops
-      - type: AdditionalLanguage # Orion
-        speaks:
-        - Codespeak
-        understands:
-        - Codespeak
+      # Mini edit start
+      - type: GhostPanelAntagonistMarker
+        name: ghost-panel-antagonist-nukeops-name
+        description: ghost-panel-antagonist-nukeops-description
+        priority: 10
+      # Mini edit end
       - type: NukeOperative
       - type: RandomMetadata
         nameSegments:
@@ -389,7 +392,7 @@
   id: Traitor
   components:
   - type: GameRule
-    minPlayers: 5
+    minPlayers: 0
   - type: AntagSelection
     selectionTime: IntraPlayerSpawn # Goobstation
     definitions:
@@ -397,6 +400,8 @@
       max: 8
       playerRatio: 10
       chaosScore: 150 # Goobstation
+      skills: # CorvaxGoob-Skills
+      - All
       blacklist:
         components:
         - CommandStaff # Goobstation
@@ -411,7 +416,7 @@
   parent: BaseGameRule
   components:
   - type: GameRule
-    minPlayers: 15
+    minPlayers: 0
     chaosScore: 1000 # Goobstation - intentionally not per-antag
   - type: RevolutionaryRule
   - type: AntagSelection
@@ -420,6 +425,8 @@
     - prefRoles: [ HeadRev ]
       max: 3
       playerRatio: 15
+      skills: # CorvaxGoob-Skills
+      - All
       blacklist:
         components:
         - CommandStaff # Goobstation
@@ -503,7 +510,7 @@
   parent: BaseGameRule
   components:
   - type: GameRule
-    minPlayers: 20
+    minPlayers: 0
     delay:
       min: 600
       max: 900
@@ -520,6 +527,8 @@
       max: 4
       playerRatio: 15
       jobBlacklist: [ Chaplain ] # Goobstation
+      skills: # CorvaxGoob-Skills
+      - All
       blacklist:
         components:
         - CommandStaff # Goobstation
@@ -627,6 +636,8 @@
   id: RampingStationEventScheduler
   parent: BaseGameRule
   components:
+  - type: GameRule # CorvaxGoob-GameRulesTweak
+    minPlayers: 30
   - type: RampingStationEventScheduler
     scheduledGameRules: !type:NestedSelector
       tableId: BasicGameRulesTable
@@ -669,14 +680,6 @@
   id: BasicRoundstartVariation
   parent: BaseGameRule
   components:
-  # Orion-Start
-  - type: SubGamemodes
-    rules:
-    - id: Payday
-      prob: 1
-    - id: MarketShift
-      prob: 1
-  # Orion-End
   - type: RoundstartStationVariationRule
     rules:
     - id: BasicPoweredLightVariationPass
