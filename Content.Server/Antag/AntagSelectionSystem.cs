@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Casha
+// Мини-станция/Freaky-station, Licensed under custom terms with restrictions on public hosting and commercial use, full text: https://raw.githubusercontent.com/ministation/mini-station-goob/master/LICENSE.TXT
 using System.Linq;
 using Content.Server.Administration.Managers;
+using Content.Server.Sponsors;
 using Content.Server._Mini.AntagTokens;
 using Content.Server.Antag.Components;
 using Content.Server.Chat.Managers;
@@ -20,6 +22,7 @@ using Content.Server.Shuttles.Components;
 using Content.Shared.Administration.Logs;
 using Content.Shared.Antag;
 using Content.Shared.Clothing;
+using Content.Shared.Clumsy;
 using Content.Shared.Database;
 using Content.Shared.GameTicking;
 using Content.Shared.GameTicking.Components;
@@ -39,25 +42,29 @@ using Robust.Shared.Player;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
 using Robust.Shared.Utility;
+using System.Linq;
+using Content.Server._CorvaxGoob.Skills;
 
 namespace Content.Server.Antag;
 
 public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelectionComponent>
 {
     [Dependency] private readonly AudioSystem _audio = default!;
+    [Dependency] private readonly IBanManager _ban = default!;
     [Dependency] private readonly IChatManager _chat = default!;
     [Dependency] private readonly GhostRoleSystem _ghostRole = default!;
     [Dependency] private readonly JobSystem _jobs = default!;
     [Dependency] private readonly LoadoutSystem _loadout = default!;
     [Dependency] private readonly MindSystem _mind = default!;
     [Dependency] private readonly IPlayerManager _playerManager = default!;
+    [Dependency] private readonly PlayTimeTrackingSystem _playTime = default!;
     [Dependency] private readonly IServerPreferencesManager _pref = default!;
     [Dependency] private readonly RoleSystem _role = default!;
     [Dependency] private readonly TransformSystem _transform = default!;
     [Dependency] private readonly EntityWhitelistSystem _whitelist = default!;
     [Dependency] private readonly InventorySystem _inventory = default!; // Goobstation
-    [Dependency] private readonly LastRolledAntagManager _lastRolled = default!; // Goobstation
-    [Dependency] private readonly PlayTimeTrackingManager _playTime = default!; // Goobstation
+    [Dependency] private readonly SkillsSystem _skills = default!; // CorvaxGoob-Skills
+    [Dependency] private readonly SponsorSystem _sponsor = default!; // mini-station donate privellege
     [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
 
     // arbitrary random number to give late joining some mild interest.
@@ -255,7 +262,7 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
     }
 
     // Goobstation
-    public Dictionary<ICommonSession, float> ToWeightsDict(IList<ICommonSession> pool)
+/*    public Dictionary<ICommonSession, float> ToWeightsDict(IList<ICommonSession> pool)
     {
         Dictionary<ICommonSession, float> weights = new();
 
@@ -268,7 +275,7 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
         }
 
         return weights;
-    }
+    }*/
 
     /// <summary>
     /// Chooses antagonists from the given selection of players
@@ -418,16 +425,6 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
         if (!onlyPreSelect && !IsEntityValid(session?.AttachedEntity, def))
             return false;
 
-        // Goobstation
-        if (session != null)
-        {
-            try // tests die without this
-            {
-                _lastRolled.SetLastRolled(session.UserId, _playTime.GetOverallPlaytime(session));
-            }
-            catch { }
-        }
-
         if (onlyPreSelect && session != null)
         {
             if (!ent.Comp.PreSelectedSessions.TryGetValue(def, out var set))
@@ -571,6 +568,9 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
         foreach (var special in def.Special)
             special.AfterEquip(ent);
 
+        if (def.Skills is not null && def.Skills.Count > 0) // CorvaxGoob-Skills
+            _skills.GrantSkill(player, new HashSet<Content.Shared._CorvaxGoob.Skills.Skills>(def.Skills));
+
         var afterEv = new AfterAntagEntitySelectedEvent(session, player, ent, def);
         RaiseLocalEvent(ent, ref afterEv, true);
     }
@@ -578,6 +578,7 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
     /// <summary>
     /// Gets an ordered player pool based on player preferences and the antagonist definition.
     /// </summary>
+    /// mini-station antag priority
     public AntagSelectionPlayerPool GetPlayerPool(Entity<AntagSelectionComponent> ent, IList<ICommonSession> sessions, AntagSelectionDefinition def)
     {
         var preferredList = new List<ICommonSession>();
@@ -600,8 +601,7 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
             {
                 preferredList.Add(session);
                 //mini-station donate privellege
-                var sponsorSys = EntitySystem.Get<SponsorSystem>();
-                var sponsor = sponsorSys.Sponsors.FirstOrDefault(s => s.Uid == session.UserId.ToString());
+                var sponsor = _sponsor.Sponsors.FirstOrDefault(s => s.Uid == session.UserId.ToString());
 
                 if (sponsor.Level > 0)
                 {
@@ -623,13 +623,13 @@ public sealed partial class AntagSelectionSystem : GameRuleSystem<AntagSelection
                     }
                 }
             }
-            else if (HasFallbackAntagPreference(session, def))
+            else if (ValidAntagPreference(session, def.FallbackRoles))
             {
                 fallbackList.Add(session);
             }
         }
 
-        return new AntagSelectionPlayerPool(new() { ToWeightsDict(preferredList), ToWeightsDict(fallbackList) }); // Goobstation
+        return new AntagSelectionPlayerPool(new() { preferredList, fallbackList });
     }
 
     /// <summary>
