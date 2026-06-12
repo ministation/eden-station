@@ -17,6 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Content.Server._Arcane.Markings;  // Arcane
 using Content.Shared.Humanoid;
 using Content.Shared.Humanoid.Markings;
 using Content.Shared.Verbs;
@@ -105,6 +106,8 @@ public sealed partial class HumanoidAppearanceSystem : SharedHumanoidAppearanceS
 
         humanoid.MarkingSet.Replace(category, index, marking);
         Dirty(uid, humanoid);
+
+        RaiseLocalEvent(uid, new HumanoidMarkingsUpdatedEvent()); //Arcane
     }
 
     /// <summary>
