@@ -148,7 +148,7 @@ using Robust.Shared.Utility;
 
 namespace Content.Server.Ghost
 {
-    public sealed class GhostSystem : SharedGhostSystem
+    public sealed partial class GhostSystem : SharedGhostSystem
     {
         [Dependency] private readonly SharedActionsSystem _actions = default!;
         [Dependency] private readonly IAdminLogManager _adminLog = default!;
@@ -485,86 +485,86 @@ namespace Content.Server.Ghost
                 _physics.SetLinearVelocity(uid, Vector2.Zero, body: physics);
         }
 
-        // Orion-Start
-        private List<GhostWarpPlace> GetLocationWarps()
-        {
-            var warps = new List<GhostWarpPlace>();
-            var allQuery = AllEntityQuery<WarpPointComponent>();
+        // // Orion-Start
+        // private List<GhostWarpPlace> GetLocationWarps()
+        // {
+        //     var warps = new List<GhostWarpPlace>();
+        //     var allQuery = AllEntityQuery<WarpPointComponent>();
 
-            while (allQuery.MoveNext(out var uid, out var warp))
-            {
-                var newWarp =  new GhostWarpPlace(GetNetEntity(uid), warp.Location ?? Name(uid), warp.Location ?? Description(uid));
-                warps.Add(newWarp);
-            }
+        //     while (allQuery.MoveNext(out var uid, out var warp))
+        //     {
+        //         var newWarp =  new GhostWarpPlace(GetNetEntity(uid), warp.Location ?? Name(uid), warp.Location ?? Description(uid));
+        //         warps.Add(newWarp);
+        //     }
 
-            return warps;
-        }
-        // Orion-End
+        //     return warps;
+        // }
+        // // Orion-End
 
-        private List<GhostWarpPlayer> GetPlayerWarps() // Orion-Edit: GetLocationWarps > GetPlayerWarps
-        {
-/* // Orion-Edit: Removed
-            var allQuery = AllEntityQuery<WarpPointComponent>();
+//         private List<GhostWarpPlayer> GetPlayerWarps() // Orion-Edit: GetLocationWarps > GetPlayerWarps
+//         {
+// /* // Orion-Edit: Removed
+//             var allQuery = AllEntityQuery<WarpPointComponent>();
 
-            while (allQuery.MoveNext(out var uid, out var warp))
-            {
-                yield return new GhostWarp(GetNetEntity(uid), warp.Location ?? Name(uid), true);
-            }
-*/
+//             while (allQuery.MoveNext(out var uid, out var warp))
+//             {
+//                 yield return new GhostWarp(GetNetEntity(uid), warp.Location ?? Name(uid), true);
+//             }
+// */
 
-            // Orion-Start
-            var warps = new List<GhostWarpPlayer>();
-            foreach (var mindContainer in EntityQuery<MindContainerComponent>())
-            {
-                var entity = mindContainer.Owner;
-                var meta = Comp<MetaDataComponent>(entity);
+//             // Orion-Start
+//             var warps = new List<GhostWarpPlayer>();
+//             foreach (var mindContainer in EntityQuery<MindContainerComponent>())
+//             {
+//                 var entity = mindContainer.Owner;
+//                 var meta = Comp<MetaDataComponent>(entity);
 
-                if (HasComp<GlobalAntagonistComponent>(entity) || IsShitEntity(meta.EntityPrototype?.ID))
-                    continue;
+//                 if (HasComp<GlobalAntagonistComponent>(entity) || IsShitEntity(meta.EntityPrototype?.ID))
+//                     continue;
 
-                if (!HasComp<HumanoidAppearanceComponent>(entity) &&
-                    !HasComp<GhostComponent>(entity) &&
-                    !HasComp<BorgBrainComponent>(entity) &&
-                    !HasComp<SiliconLawProviderComponent>(entity) && // Drone detection
-                    !HasComp<BorgChassisComponent>(entity))
-                    continue;
+//                 if (!HasComp<HumanoidAppearanceComponent>(entity) &&
+//                     !HasComp<GhostComponent>(entity) &&
+//                     !HasComp<BorgBrainComponent>(entity) &&
+//                     !HasComp<SiliconLawProviderComponent>(entity) && // Drone detection
+//                     !HasComp<BorgChassisComponent>(entity))
+//                     continue;
 
-                var playerDepartmentId = _prototypeManager.Index<DepartmentPrototype>("Specific").ID;
-                var playerJobName = Loc.GetString("generic-unknown-title");
+//                 var playerDepartmentId = _prototypeManager.Index<DepartmentPrototype>("Specific").ID;
+//                 var playerJobName = Loc.GetString("generic-unknown-title");
 
-                if (_jobs.MindTryGetJob(mindContainer.Mind ?? mindContainer.LastMindStored,
-                        out var jobPrototype))
-                {
-                    playerJobName = Loc.GetString(jobPrototype.Name);
+//                 if (_jobs.MindTryGetJob(mindContainer.Mind ?? mindContainer.LastMindStored,
+//                         out var jobPrototype))
+//                 {
+//                     playerJobName = Loc.GetString(jobPrototype.Name);
 
-                    if (_jobs.TryGetDepartment(jobPrototype.ID, out var departmentPrototype))
-                    {
-                        playerDepartmentId = departmentPrototype.ID;
-                    }
-                }
+//                     if (_jobs.TryGetDepartment(jobPrototype.ID, out var departmentPrototype))
+//                     {
+//                         playerDepartmentId = departmentPrototype.ID;
+//                     }
+//                 }
 
-                var hasAnyMind = (mindContainer.Mind ?? mindContainer.LastMindStored) != null;
-                var isDead = _mobState.IsDead(entity);
-                var isLeft = TryComp<SSDIndicatorComponent>(entity, out var indicator) && indicator.IsSSD && !isDead &&
-                             hasAnyMind;
+//                 var hasAnyMind = (mindContainer.Mind ?? mindContainer.LastMindStored) != null;
+//                 var isDead = _mobState.IsDead(entity);
+//                 var isLeft = TryComp<SSDIndicatorComponent>(entity, out var indicator) && indicator.IsSSD && !isDead &&
+//                              hasAnyMind;
 
-                var warp = new GhostWarpPlayer(
-                    GetNetEntity(entity),
-                    Comp<MetaDataComponent>(entity).EntityName,
-                    playerJobName,
-                    playerDepartmentId,
-                    HasComp<GhostComponent>(entity),
-                    isLeft,
-                    isDead,
-                    _mobState.IsAlive(entity)
-                );
+//                 var warp = new GhostWarpPlayer(
+//                     GetNetEntity(entity),
+//                     Comp<MetaDataComponent>(entity).EntityName,
+//                     playerJobName,
+//                     playerDepartmentId,
+//                     HasComp<GhostComponent>(entity),
+//                     isLeft,
+//                     isDead,
+//                     _mobState.IsAlive(entity)
+//                 );
 
-                warps.Add(warp);
-            }
+//                 warps.Add(warp);
+//             }
 
-            return warps;
-            // Orion-End
-        }
+//             return warps;
+//             // Orion-End
+//         }
 
         // Orion-Start
         private bool IsShitEntity(string? entityId)
@@ -591,28 +591,28 @@ namespace Content.Server.Ghost
             };
         }
 
-        private List<GhostWarpGlobalAntagonist> GetAntagonistWarps()
-        {
-            var warps = new List<GhostWarpGlobalAntagonist>();
+        // private List<GhostWarpGlobalAntagonist> GetAntagonistWarps()
+        // {
+        //     var warps = new List<GhostWarpGlobalAntagonist>();
 
-            foreach (var antagonist in EntityQuery<GlobalAntagonistComponent>())
-            {
-                var entity = antagonist.Owner;
-                var prototype = _prototypeManager.Index<AntagonistPrototype>(antagonist.AntagonistPrototype ?? "globalAntagonistUnknown");
+        //     foreach (var antagonist in EntityQuery<GlobalAntagonistComponent>())
+        //     {
+        //         var entity = antagonist.Owner;
+        //         var prototype = _prototypeManager.Index<AntagonistPrototype>(antagonist.AntagonistPrototype ?? "globalAntagonistUnknown");
 
-                var warp = new GhostWarpGlobalAntagonist(
-                    GetNetEntity(entity),
-                    Comp<MetaDataComponent>(entity).EntityName,
-                    prototype.Name,
-                    prototype.Description,
-                    prototype.ID
-                );
+        //         var warp = new GhostWarpGlobalAntagonist(
+        //             GetNetEntity(entity),
+        //             Comp<MetaDataComponent>(entity).EntityName,
+        //             prototype.Name,
+        //             prototype.Description,
+        //             prototype.ID
+        //         );
 
-                warps.Add(warp);
-            }
+        //         warps.Add(warp);
+        //     }
 
-            return warps;
-        }
+        //     return warps;
+        // }
         // Orion-End
 
 /* // Orion-Edit: Removed
