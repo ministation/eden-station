@@ -224,8 +224,6 @@ namespace Content.Client.Lobby.UI
         // One at a time.
         private LoadoutWindow? _loadoutWindow;
 
-        private TTSTab? _ttsTab;// CorvaxGoob-TTS
-
         private bool _exporting;
         private bool _imaging;
 
