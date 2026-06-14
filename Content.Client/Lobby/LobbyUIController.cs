@@ -83,13 +83,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Linq;
-using Content.Client._Orion.Lobby.UI;
 using Content.Client.Guidebook;
 using Content.Client.Humanoid;
 using Content.Client.Inventory;
 using Content.Client.Lobby.UI;
 using Content.Client.Players.PlayTimeTracking;
 using Content.Client.Station;
+using Content.Corvax.Interfaces.Shared;
 using Content.Shared.CCVar;
 using Content.Shared.Clothing;
 using Content.Shared.GameTicking;
@@ -100,6 +100,7 @@ using Content.Shared.Preferences;
 using Content.Shared.Preferences.Loadouts;
 using Content.Shared.Roles;
 using Content.Shared.Traits;
+using Content.SponsorImplementations.Client;
 using Robust.Client.Player;
 using Robust.Client.ResourceManagement;
 using Robust.Client.State;
@@ -131,8 +132,7 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
     private CharacterSetupGui? _characterSetup;
     private HumanoidProfileEditor? _profileEditor;
     private CharacterSetupGuiSavePanel? _savePanel;
-
-    private static readonly string[] UnderwearSlots = ["underwear", "undershirt", "socks"]; // Orion
+    private ISharedSponsorsManager? _sponsors; // Sponsor think
 
     /// <summary>
     /// This is the characher preview panel in the chat. This should only update if their character updates.
@@ -149,9 +149,14 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
     public override void Initialize()
     {
         base.Initialize();
+        IoCManager.Instance!.TryResolveType(out _sponsors);
+
         _prototypeManager.PrototypesReloaded += OnProtoReload;
         _preferencesManager.OnServerDataLoaded += PreferencesDataLoaded;
         _requirements.Updated += OnRequirementsUpdated;
+
+        if (_sponsors is ISponsorUpdateInvoker sponsorUpdateInvoker)
+            sponsorUpdateInvoker.OnSponsorInfoUpdated += OnSponsorInfoUpdated;
 
         _configurationManager.OnValueChanged(CCVars.FlavorText, args =>
         {
@@ -171,6 +176,28 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
         }
 
         return null;
+    }
+
+    // SponsorThink edit
+    private void OnSponsorInfoUpdated(List<string> proto)
+    {
+        if (EditedProfile != null)
+        {
+            SaveProfile();
+        }
+        else
+        {
+            if(_preferencesManager.Preferences is null)
+                return;
+
+            _preferencesManager.Preferences.SelectedCharacter.EnsureValid(
+                _playerManager.LocalSession!,
+                IoCManager.Instance!,
+                proto.ToArray()
+                );
+
+            RefreshLobbyPreview();
+        }
     }
 
     private void OnRequirementsUpdated()
@@ -273,7 +300,7 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
             return;
         }
 
-        var dummy = LoadProfileEntity(humanoid, null, ClothingDisplayMode.ShowAll); // Orion-Edit
+        var dummy = LoadProfileEntity(humanoid, null, true);
         PreviewPanel.SetSprite(dummy);
         PreviewPanel.SetSummaryText(humanoid.Summary);
     }
@@ -360,7 +387,8 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
             _prototypeManager,
             _resourceCache,
             _requirements,
-            _markings);
+            _markings,
+            _sponsors); //Sponsor think
 
         _profileEditor.OnOpenGuidebook += _guide.OpenHelp;
 
@@ -417,15 +445,15 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
     /// <summary>
     /// Applies the highest priority job's clothes to the dummy.
     /// </summary>
-    public void GiveDummyJobClothesLoadout(EntityUid dummy, JobPrototype? jobProto, HumanoidCharacterProfile profile, ClothingDisplayMode clothingMode = ClothingDisplayMode.ShowAll) // Orion-Edit
+    public void GiveDummyJobClothesLoadout(EntityUid dummy, JobPrototype? jobProto, HumanoidCharacterProfile profile)
     {
         var job = jobProto ?? GetPreferredJob(profile);
-        GiveDummyJobClothes(dummy, profile, job, clothingMode); // Orion-Edit
+        GiveDummyJobClothes(dummy, profile, job);
 
         if (_prototypeManager.HasIndex<RoleLoadoutPrototype>(LoadoutSystem.GetJobPrototype(job.ID)))
         {
             var loadout = profile.GetLoadoutOrDefault(LoadoutSystem.GetJobPrototype(job.ID), _playerManager.LocalSession, profile.Species, EntityManager, _prototypeManager);
-            GiveDummyLoadout(dummy, loadout, clothingMode); // Orion-Edit
+            GiveDummyLoadout(dummy, loadout);
         }
     }
 
@@ -439,9 +467,9 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
         return _prototypeManager.Index<JobPrototype>(highPriorityJob.Id ?? SharedGameTicker.FallbackOverflowJob);
     }
 
-    public void GiveDummyLoadout(EntityUid uid, RoleLoadout? roleLoadout, ClothingDisplayMode clothingMode = ClothingDisplayMode.ShowAll) // Orion-Edit
+    public void GiveDummyLoadout(EntityUid uid, RoleLoadout? roleLoadout)
     {
-        if (roleLoadout is null)
+        if (roleLoadout == null)
             return;
 
         foreach (var group in roleLoadout.SelectedLoadouts.Values)
@@ -451,28 +479,7 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
                 if (!_prototypeManager.TryIndex(loadout.Prototype, out var loadoutProto))
                     continue;
 
-                // Orion-Start
-                if (clothingMode == ClothingDisplayMode.ShowUnderwearOnly)
-                {
-                    foreach (var slotName in UnderwearSlots)
-                    {
-                        if (!loadoutProto.Equipment.TryGetValue(slotName, out var itemType) || string.IsNullOrEmpty(itemType))
-                            continue;
-
-                        if (_inventory.TryUnequip(uid, slotName, out var unequipped, silent: true, force: true, reparent: false))
-                            EntityManager.DeleteEntity(unequipped.Value);
-
-                        var item = EntityManager.SpawnEntity(itemType, MapCoordinates.Nullspace);
-                        _inventory.TryEquip(uid, item, slotName, true, true);
-                    }
-                }
-                // Orion-End
-                // Orion-Edit-Start
-                else
-                {
-                    _spawn.EquipStartingGear(uid, loadoutProto);
-                }
-                // Orion-Edit-End
+                _spawn.EquipStartingGear(uid, loadoutProto);
             }
         }
     }
@@ -480,9 +487,9 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
     /// <summary>
     /// Applies the specified job's clothes to the dummy.
     /// </summary>
-    private void GiveDummyJobClothes(EntityUid dummy, HumanoidCharacterProfile profile, JobPrototype job, ClothingDisplayMode clothingMode = ClothingDisplayMode.ShowAll) // Orion-Edit
+    public void GiveDummyJobClothes(EntityUid dummy, HumanoidCharacterProfile profile, JobPrototype job)
     {
-        if (!_inventory.TryGetSlots(dummy, out var slots)) // Orion-Edit
+        if (!_inventory.TryGetSlots(dummy, out var slots))
             return;
 
         // Apply loadout
@@ -495,14 +502,9 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
                     if (!_prototypeManager.TryIndex(loadout.Prototype, out var loadoutProto))
                         continue;
 
+                    // TODO: Need some way to apply starting gear to an entity and replace existing stuff coz holy fucking shit dude.
                     foreach (var slot in slots)
                     {
-                        // Orion-Start
-                        if (clothingMode == ClothingDisplayMode.ShowUnderwearOnly &&
-                            !UnderwearSlots.Contains(slot.Name))
-                            continue;
-                        // Orion-End
-
                         // Try startinggear first
                         if (_prototypeManager.TryIndex(loadoutProto.StartingGear, out var loadoutGear))
                         {
@@ -539,11 +541,6 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
             }
         }
 
-        // Orion-Start
-        if (clothingMode == ClothingDisplayMode.ShowUnderwearOnly)
-            return;
-        // Orion-End
-
         if (!_prototypeManager.TryIndex(job.StartingGear, out var gear))
             return;
 
@@ -567,12 +564,12 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
     /// <summary>
     /// Loads the profile onto a dummy entity.
     /// </summary>
-    public EntityUid LoadProfileEntity(HumanoidCharacterProfile? humanoid, JobPrototype? job, ClothingDisplayMode clothingMode) // Orion-Edit
+    public EntityUid LoadProfileEntity(HumanoidCharacterProfile? humanoid, JobPrototype? job, bool jobClothes)
     {
         EntityUid dummyEnt;
 
         EntProtoId? previewEntity = null;
-        if (humanoid != null && clothingMode != ClothingDisplayMode.HideAll) // Orion-Edit
+        if (humanoid != null && jobClothes)
         {
             job ??= GetPreferredJob(humanoid);
 
@@ -597,20 +594,18 @@ public sealed class LobbyUIController : UIController, IOnStateEntered<LobbyState
 
         _humanoid.LoadProfile(dummyEnt, humanoid);
 
-        // Orion-Edit-Start
-        if (humanoid == null || clothingMode == ClothingDisplayMode.HideAll)
-            return dummyEnt;
+        if (humanoid != null && jobClothes)
+        {
+            DebugTools.Assert(job != null);
 
-        DebugTools.Assert(job != null);
+            GiveDummyJobClothes(dummyEnt, humanoid, job);
 
-        GiveDummyJobClothes(dummyEnt, humanoid, job, clothingMode);
-
-        if (!_prototypeManager.HasIndex<RoleLoadoutPrototype>(LoadoutSystem.GetJobPrototype(job.ID)))
-            return dummyEnt;
-
-        var loadout = humanoid.GetLoadoutOrDefault(LoadoutSystem.GetJobPrototype(job.ID), _playerManager.LocalSession, humanoid.Species, EntityManager, _prototypeManager);
-        GiveDummyLoadout(dummyEnt, loadout, clothingMode);
-        // Orion-Edit-End
+            if (_prototypeManager.HasIndex<RoleLoadoutPrototype>(LoadoutSystem.GetJobPrototype(job.ID)))
+            {
+                var loadout = humanoid.GetLoadoutOrDefault(LoadoutSystem.GetJobPrototype(job.ID), _playerManager.LocalSession, humanoid.Species, EntityManager, _prototypeManager);
+                GiveDummyLoadout(dummyEnt, loadout);
+            }
+        }
 
         return dummyEnt;
     }

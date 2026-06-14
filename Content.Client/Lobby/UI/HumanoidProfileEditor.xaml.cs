@@ -156,9 +156,6 @@
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using Content.Client._Orion.Lobby.UI;
-using Content.Client._Orion.RichText;
-using Content.Client.Guidebook;
 using Content.Client.Humanoid;
 using Content.Client.Lobby.UI.Loadouts;
 using Content.Client.Lobby.UI.Roles;
@@ -167,6 +164,8 @@ using Content.Client.Players.PlayTimeTracking;
 using Content.Client.Sprite;
 using Content.Client.Stylesheets;
 using Content.Client.UserInterface.Systems.Guidebook;
+using Content.Shared._CorvaxGoob.CCCVars;
+using Content.Corvax.Interfaces.Shared;
 using Content.Shared.CCVar;
 using Content.Shared.Clothing;
 using Content.Shared.GameTicking;
@@ -194,18 +193,14 @@ using Robust.Shared.Prototypes;
 using Robust.Shared.Physics.Systems;
 using Robust.Shared.Utility;
 using Direction = Robust.Shared.Maths.Direction;
-using Content.Goobstation.Common.CCVar;
-using Content.Goobstation.Common.Barks;
-using Content.Shared._Orion.RichText;
-using Content.Shared._Arcane.ERP;
-using Content.Shared._Arcane.CCVars; // Arcane-edit
+using Content.Client._CorvaxGoob.TTS;
+using Content.Shared._CorvaxGoob; // CorvaxGoob-TTS
+
 namespace Content.Client.Lobby.UI
 {
     [GenerateTypedNameReferences]
     public sealed partial class HumanoidProfileEditor : BoxContainer
     {
-        [Dependency] private readonly DocumentParsingManager _parsingMan = default!; // Orion
-
         private readonly IClientPreferencesManager _preferencesManager;
         private readonly IConfigurationManager _cfgManager;
         private readonly IEntityManager _entManager;
@@ -216,6 +211,7 @@ namespace Content.Client.Lobby.UI
         private readonly MarkingManager _markingManager;
         private readonly JobRequirementsManager _requirements;
         private readonly LobbyUIController _controller;
+        private readonly ISharedSponsorsManager? _sponsorsManager; //Sponsor think
 
         private readonly SpriteSystem _sprite;
 
@@ -225,22 +221,11 @@ namespace Content.Client.Lobby.UI
 
         private FlavorText.FlavorText? _flavorText;
         private TextEdit? _flavorTextEdit;
-        // Orion-Start
-        private TextEdit? _flavorTextOOCEdit;
-        private TextEdit? _characterTextEdit;
-        private TextEdit? _greenTextEdit;
-        private TextEdit? _yellowTextEdit;
-        private TextEdit? _redTextEdit;
-        private TextEdit? _tagsTextEdit;
-        private TextEdit? _linksTextEdit;
-        private TextEdit? _nsfwTextEdit;
-        private TextEdit? _nsfwLinksTextEdit;
-        private TextEdit? _nsfwOOCTextEdit;
-        private TextEdit? _nsfwTagsTextEdit;
-        // Orion-End
 
         // One at a time.
         private LoadoutWindow? _loadoutWindow;
+
+        private TTSTab? _ttsTab;// CorvaxGoob-TTS
 
         private bool _exporting;
         private bool _imaging;
@@ -288,10 +273,6 @@ namespace Content.Client.Lobby.UI
 
         private ISawmill _sawmill;
 
-        private SpeciesWindow? _speciesWindow;  // Orion
-
-        private ClothingDisplayMode _clothingDisplayMode = ClothingDisplayMode.ShowAll; // Orion
-
         public HumanoidProfileEditor(
             IClientPreferencesManager preferencesManager,
             IConfigurationManager configurationManager,
@@ -302,7 +283,8 @@ namespace Content.Client.Lobby.UI
             IPrototypeManager prototypeManager,
             IResourceManager resManager,
             JobRequirementsManager requirements,
-            MarkingManager markings)
+            MarkingManager markings,
+            ISharedSponsorsManager? sponsorsManager) //Sponsor think
         {
             RobustXamlLoader.Load(this);
             _sawmill = logManager.GetSawmill("profile.editor");
@@ -312,6 +294,7 @@ namespace Content.Client.Lobby.UI
             _playerManager = playerManager;
             _prototypeManager = prototypeManager;
             _markingManager = markings;
+            _sponsorsManager = sponsorsManager;
             _preferencesManager = preferencesManager;
             _resManager = resManager;
             _requirements = requirements;
@@ -377,8 +360,6 @@ namespace Content.Client.Lobby.UI
 
             #endregion Sex
 
-            InitializeVoice(); // Art-TTS
-
             #region Age
 
             AgeEdit.OnTextChanged += args =>
@@ -409,22 +390,14 @@ namespace Content.Client.Lobby.UI
             // Goob Station
             #region Barks
 
-            if (configurationManager.GetCVar(GoobCVars.BarksEnabled))
+            // CorvaxGoob-Revert : DB conflicts
+/*            if (configurationManager.GetCVar(GoobCVars.BarksEnabled))
             {
                 BarksContainer.Visible = true;
                 InitializeBarkVoice();
-            }
+            }*/
 
             #endregion
-
-            // Arcane-start
-            _cfgManager.OnValueChanged(ACCVars.UseTTS, OnUseTTSChanged, true);
-
-            ToggleTTS.OnPressed += _ =>
-            {
-                _cfgManager.SetCVar(ACCVars.UseTTS, ToggleTTS.Pressed);
-            };
-            // Arcane-end
 
             RefreshSpecies();
 
@@ -434,55 +407,15 @@ namespace Content.Client.Lobby.UI
                 SetSpecies(_species[args.Id].ID);
                 UpdateHairPickers();
                 OnSkinColorOnValueChanged();
-                UpdateHeightWidthSliders(); // Goobstation: port EE height/width sliders
+                // UpdateHeightWidthSliders(); // Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
             };
 
-            // Orion-Start
-            NewSpeciesButton.OnToggled += args =>
-            {
-                if (Profile == null)
-                    return;
-
-                _speciesWindow?.Dispose();
-
-                if (!args.Pressed)
-                {
-                    _speciesWindow = null;
-                }
-                else
-                {
-                    _speciesWindow = new(
-                        Profile,
-                        prototypeManager,
-                        _controller,
-                        _resManager);
-
-                    _speciesWindow.OpenCenteredLeft();
-                    var oldProfile = Profile.Clone();
-                    _speciesWindow.ChooseAction += args =>
-                    {
-                        SetSpecies(args);
-                        OnSkinColorOnValueChangedKeepColor(oldProfile);
-                        UpdateHairPickers();
-                        _speciesWindow?.Dispose();
-                        _speciesWindow = null;
-                        var name1 = _prototypeManager.Index(Profile?.Species ?? "Human").Name;
-                        NewSpeciesButton.Text = Loc.GetString(name1);
-                        NewSpeciesButton.Pressed = false;
-                    };
-                    _speciesWindow.OnClose += () =>
-                    {
-                        NewSpeciesButton.Pressed = false;
-                        _speciesWindow = null;
-                    };
-                }
-            };
-            // Orion-End
-
-            // begin Goobstation: port EE height/width sliders
+            /*// begin Goobstation: port EE height/width sliders
             #region Height and Width
 
-            UpdateHeightWidthSliders();
+            var prototype = _species.Find(x => x.ID == Profile?.Species) ?? _species.First();
+
+            UpdateHeightWidthSliders(); // CorvaxGoob-Clearing
             UpdateDimensions(SliderUpdate.Both);
 
             HeightSlider.OnValueChanged += _ => UpdateDimensions(SliderUpdate.Height);
@@ -503,7 +436,7 @@ namespace Content.Client.Lobby.UI
             };
 
             #endregion Height and Width
-            // end Goobstation: port EE height/width sliders
+            // end Goobstation: port EE height/width sliders*/
 
             #region Skin
 
@@ -642,23 +575,6 @@ namespace Content.Client.Lobby.UI
 
             #endregion SpawnPriority
 
-            // Arcane-Start
-            #region ErpPreference
-
-            foreach (var value in Enum.GetValues<ErpPreference>())
-            {
-                ErpPreferenceButton.AddItem(Loc.GetString($"humanoid-profile-editor-erp-preference-{value.ToString().ToLower()}"), (int) value);
-            }
-
-            ErpPreferenceButton.OnItemSelected += args =>
-            {
-                ErpPreferenceButton.SelectId(args.Id);
-                SetErpPreference((ErpPreference) args.Id);
-            };
-
-            #endregion ErpPreference
-            // Arcane-End
-
             #region Eyes
 
             EyeColorPicker.OnEyeColorPicked += newColor =>
@@ -705,6 +621,8 @@ namespace Content.Client.Lobby.UI
 
             RefreshTraits();
 
+            TabContainer.SetTabTitle(3, Loc.GetString("humanoid-profile-editor-traits-tab")); // CorvaxGoob-TTS-Edit
+
             #region Markings
 
             TabContainer.SetTabTitle(4, Loc.GetString("humanoid-profile-editor-markings-tab"));
@@ -717,6 +635,8 @@ namespace Content.Client.Lobby.UI
             #endregion Markings
 
             RefreshFlavorText();
+
+            RefreshVoiceTab(); // CorvaxGoob-TTS
 
             #region Dummy
 
@@ -735,28 +655,10 @@ namespace Content.Client.Lobby.UI
 
             #endregion Left
 
-/* // Orion-Edit: Replaced
             ShowClothes.OnToggled += args =>
             {
                 ReloadPreview();
             };
-*/
-
-            // Orion-Start
-            _clothingDisplayMode = ClothingDisplayMode.ShowAll;
-
-            ClothingDisplayButton.AddItem(Loc.GetString("humanoid-profile-editor-clothing-show-all"), (int)ClothingDisplayMode.ShowAll);
-            ClothingDisplayButton.AddItem(Loc.GetString("humanoid-profile-editor-clothing-show-underwear"), (int)ClothingDisplayMode.ShowUnderwearOnly);
-            ClothingDisplayButton.AddItem(Loc.GetString("humanoid-profile-editor-clothing-hide-all"), (int)ClothingDisplayMode.HideAll);
-            ClothingDisplayButton.SelectId((int)ClothingDisplayMode.ShowAll);
-
-            ClothingDisplayButton.OnItemSelected += args =>
-            {
-                ClothingDisplayButton.SelectId(args.Id);
-                _clothingDisplayMode = (ClothingDisplayMode)args.Id;
-                ReloadPreview();
-            };
-            // Orion-End
 
             SpeciesInfoButton.OnPressed += OnSpeciesInfoButtonPressed;
 
@@ -777,283 +679,73 @@ namespace Content.Client.Lobby.UI
                 _flavorText = new FlavorText.FlavorText();
                 TabContainer.AddChild(_flavorText);
                 TabContainer.SetTabTitle(TabContainer.ChildCount - 1, Loc.GetString("humanoid-profile-editor-flavortext-tab"));
-
                 _flavorTextEdit = _flavorText.CFlavorTextInput;
-                // Orion-Start
-                _flavorTextOOCEdit = _flavorText.CFlavorOOCTextInput;
-                _characterTextEdit = _flavorText.CCharacterTextInput;
-                _greenTextEdit = _flavorText.CGreenTextInput;
-                _yellowTextEdit = _flavorText.CYellowTextInput;
-                _redTextEdit = _flavorText.CRedTextInput;
-                _tagsTextEdit = _flavorText.CTagsTextInput;
-                _linksTextEdit = _flavorText.CLinksTextInput;
-                _nsfwTextEdit = _flavorText.CNSFWTextInput;
-                _nsfwOOCTextEdit = _flavorText.CFlavorNSFWOOCTextInput;
-                _nsfwLinksTextEdit = _flavorText.CNSFWLinksTextInput;
-                _nsfwTagsTextEdit = _flavorText.CNSFWTagsTextInput;
-
-                UpdateFlavorPreview();
-                // Orion-End
 
                 _flavorText.OnFlavorTextChanged += OnFlavorTextChange;
-                // Orion-Start
-                _flavorText.OnOOCTextChanged += OnFlavorOOCTextChange;
-                _flavorText.OnCharacterTextChanged += OnCharacterFlavorTextChange;
-                _flavorText.OnGreenTextChanged += OnGreenFlavorTextChange;
-                _flavorText.OnYellowTextChanged += OnYellowFlavorTextChange;
-                _flavorText.OnRedTextChanged += OnRedFlavorTextChange;
-                _flavorText.OnTagsTextChanged += OnTagsFlavorTextChange;
-                _flavorText.OnLinksTextChanged += OnLinksFlavorTextChange;
-                _flavorText.OnNsfwTextChanged += OnNSFWFlavorTextChange;
-                _flavorText.OnNsfwLinksTextChanged += OnNsfwLinksFlavorTextChange;
-                _flavorText.OnNsfwOOCTextChanged += OnFlavorNsfwOOCTextChange;
-                _flavorText.OnNsfwTagsTextChanged += OnNsfwTagsFlavorTextChange;
-                _flavorText.OnTabChanged += OnTabChanged;
-                // Orion-End
             }
             else
             {
                 if (_flavorText == null)
                     return;
 
-                _flavorText.OnFlavorTextChanged -= OnFlavorTextChange;
-                // Orion-Start
-                _flavorText.OnOOCTextChanged -= OnFlavorOOCTextChange;
-                _flavorText.OnCharacterTextChanged -= OnCharacterFlavorTextChange;
-                _flavorText.OnGreenTextChanged -= OnGreenFlavorTextChange;
-                _flavorText.OnYellowTextChanged -= OnYellowFlavorTextChange;
-                _flavorText.OnRedTextChanged -= OnRedFlavorTextChange;
-                _flavorText.OnTagsTextChanged -= OnTagsFlavorTextChange;
-                _flavorText.OnLinksTextChanged -= OnLinksFlavorTextChange;
-                _flavorText.OnNsfwTextChanged -= OnNSFWFlavorTextChange;
-                _flavorText.OnNsfwLinksTextChanged -= OnNsfwLinksFlavorTextChange;
-                _flavorText.OnNsfwOOCTextChanged -= OnFlavorNsfwOOCTextChange;
-                _flavorText.OnNsfwTagsTextChanged -= OnNsfwTagsFlavorTextChange;
-                _flavorText.OnTabChanged -= OnTabChanged;
-                // Orion-End
-
                 TabContainer.RemoveChild(_flavorText);
+                _flavorText.OnFlavorTextChanged -= OnFlavorTextChange;
                 _flavorText.Dispose();
                 _flavorTextEdit?.Dispose();
-
                 _flavorTextEdit = null;
-                // Orion-Start
-                _flavorTextOOCEdit = null;
-                _characterTextEdit = null;
-                _greenTextEdit = null;
-                _yellowTextEdit = null;
-                _redTextEdit = null;
-                _tagsTextEdit = null;
-                _linksTextEdit = null;
-                _nsfwTextEdit = null;
-                _nsfwLinksTextEdit = null;
-                _nsfwOOCTextEdit = null;
-                _nsfwTagsTextEdit = null;
-                // Orion-End
-
                 _flavorText = null;
             }
         }
 
-        // Orion-Start
-        private void UpdateFlavorPreview()
+        //CorvaxGoob-TTS-Start
+        #region Voice
+
+        private void RefreshVoiceTab()
         {
-            if (_flavorText == null || Profile == null)
+            if (!_cfgManager.GetCVar(CCCVars.TTSEnabled))
                 return;
 
-            SetFlavorPreviewMarkup(_flavorText.PreviewAppearanceText, Profile.FlavorText);
-            SetFlavorPreviewMarkup(_flavorText.PreviewTraitsText, Profile.CharacterFlavorText);
-            SetFlavorPreviewMarkup(_flavorText.PreviewOOCText, Profile.OocFlavorText);
-            _flavorText.PreviewTagsText.Text = Profile.TagsFlavorText;
-            SetFlavorPreviewMarkup(_flavorText.PreviewNSFWOOCText, Profile.NsfwOOCFlavorText);
-            _flavorText.PreviewNSFWTagsText.Text = Profile.NsfwTagsFlavorText;
+            _ttsTab = new TTSTab();
+            var children = new List<Control>();
+            foreach (var child in TabContainer.Children)
+                children.Add(child);
 
-            ProcessLinks(Profile.LinksFlavorText, _flavorText.PreviewLinksContainer);
-            ProcessLinks(Profile.NsfwLinksFlavorText, _flavorText.PreviewNSFWLinksContainer);
+            TabContainer.RemoveAllChildren();
 
-            _flavorText.PreviewGYRContainer.RemoveAllChildren();
-            CreateGyrBigTextLabel(Loc.GetString($"humanoid-profile-editor-gyr-green"), Color.Green);
-            CreateGyrTextLabel(Profile.GreenFlavorText);
-            CreateGyrBigTextLabel(Loc.GetString($"humanoid-profile-editor-gyr-yellow"), Color.Yellow);
-            CreateGyrTextLabel(Profile.YellowFlavorText);
-            CreateGyrBigTextLabel(Loc.GetString($"humanoid-profile-editor-gyr-red"), Color.Red);
-            CreateGyrTextLabel(Profile.RedFlavorText);
-
-            SetFlavorPreviewMarkup(_flavorText.PreviewNSFWText, Profile.NsfwFlavorText);
-
-            var species = _prototypeManager.TryIndex(Profile.Species, out var speciesProto)
-                ? Loc.GetString(speciesProto.Name)
-                : Profile.Species.ToString();
-            var sex = Loc.GetString($"humanoid-profile-editor-sex-{Profile.Sex.ToString().ToLower()}-text");
-            var gender = Loc.GetString($"humanoid-profile-editor-pronouns-{Profile.Gender.ToString().ToLower()}-text");
-
-            _flavorText.PreviewNameText.Text = Profile.Name;
-            _flavorText.PreviewGenderText.Text = $"{species} | {sex} | {gender}";
-        }
-
-        private void UpdateNsfwPreviewVisibility(bool showNsfw)
-        {
-            if (_flavorText == null)
-                return;
-
-            if (_flavorText.PreviewOOCText.Visible == !showNsfw)
-                return;
-
-            _flavorText!.PreviewOOCText.Visible = !showNsfw;
-            _flavorText!.PreviewNSFWOOCText.Visible = showNsfw;
-
-            _flavorText!.PreviewLinksContainer.Visible = !showNsfw;
-            _flavorText!.PreviewNSFWLinksContainer.Visible = showNsfw;
-
-            _flavorText!.PreviewTagsText.Visible = !showNsfw;
-            _flavorText!.PreviewNSFWTagsText.Visible = showNsfw;
-        }
-
-        private void OnTabChanged(int tab)
-        {
-            switch (tab)
+            for (int i = 0; i < children.Count; i++)
             {
-                case 3:
-                    UpdateNsfwPreviewVisibility(true);
-                    break;
-                default:
-                    UpdateNsfwPreviewVisibility(false);
-                    break;
-            }
-        }
-
-        private void CreateGyrBigTextLabel(string text, Color color)
-        {
-            var label = new Label
-            {
-                Text = text,
-                VerticalExpand = true,
-                StyleClasses = { StyleNano.StyleClassLabelBig },
-                FontColorOverride = color,
-            };
-
-            _flavorText?.PreviewGYRContainer.AddChild(label);
-        }
-
-        private void CreateGyrTextLabel(string text)
-        {
-            var label = new RichTextLabel
-            {
-                VerticalExpand = true,
-            };
-
-            SetFlavorPreviewMarkup(label, text + "\n");
-            _flavorText?.PreviewGYRContainer.AddChild(label);
-        }
-
-        private void ProcessLinks(string linksText, BoxContainer linksContainer)
-        {
-            linksContainer.RemoveAllChildren();
-
-            if (string.IsNullOrEmpty(linksText))
-                return;
-
-            var links = linksText.Split(new[] { ',', ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var link in links)
-            {
-                if (IsValidUrl(link))
+                if (i == 1) // Set the tab to the 2nd place.
                 {
-                    CreateLinkButton(link, linksContainer);
+                    TabContainer.AddChild(_ttsTab);
                 }
-                else
-                {
-                    CreateLinkTextLabel(link, linksContainer);
-                }
+                TabContainer.AddChild(children[i]);
             }
-        }
 
-        private bool IsValidUrl(string url)
-        {
-            return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-                url.StartsWith("www.", StringComparison.OrdinalIgnoreCase);
-        }
+            TabContainer.SetTabTitle(1, Loc.GetString("humanoid-profile-editor-voice-tab"));
 
-        private void CreateLinkButton(string url, BoxContainer linksContainer)
-        {
-            var button = new Button
+            _ttsTab.OnVoiceSelected += voiceId =>
             {
-                Text = GetLinkDisplayText(url),
-                ToolTip = Loc.GetString("humanoid-profile-editor-link-tooltip", ("url", url)),
-                HorizontalExpand = true,
-                HorizontalAlignment = HAlignment.Center,
-                StyleClasses = { StyleBase.ButtonOpenBoth },
+                SetVoice(voiceId);
+                _ttsTab.SetSelectedVoice(voiceId);
             };
 
-            button.OnPressed += _ => OpenLink(url);
-
-            linksContainer.AddChild(button);
-        }
-
-        private void CreateLinkTextLabel(string text, BoxContainer linksContainer)
-        {
-            var label = new Label
+            _ttsTab.OnPreviewRequested += voiceId =>
             {
-                Text = text,
-                HorizontalExpand = true,
-                HorizontalAlignment = HAlignment.Center,
-                FontColorOverride = Color.Gray,
+                _entManager.System<TTSSystem>().RequestPreviewTTS(voiceId);
             };
-
-            linksContainer.AddChild(label);
         }
 
-        private string GetLinkDisplayText(string url)
+        private void UpdateTTSVoicesControls()
         {
-            if (url.Length > 40)
-            {
-                return url[..37] + "...";
-            }
-            return url;
-        }
-
-        private void OpenLink(string url)
-        {
-            if (url.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
-                url = "https://" + url;
-
-            var uriOpener = IoCManager.Resolve<IUriOpener>();
-            uriOpener.OpenUri(url);
-        }
-
-        private void OnFlavorNsfwOOCTextChange(string content)
-        {
-            if (Profile is null)
+            if (Profile is null || _ttsTab is null)
                 return;
 
-            Profile = Profile.WithNsfwOOCFlavorText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
+            _ttsTab.UpdateControls(Profile, Profile.Sex);
+            _ttsTab.SetSelectedVoice(Profile.Voice);
         }
 
-        private void OnNsfwLinksFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithNsfwLinksText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnNsfwTagsFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithNsfwTagsText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-        // Orion-End
+        #endregion
+        // CorvaxGoob-TTS-End
 
         /// <summary>
         /// Refreshes traits selector
@@ -1063,7 +755,7 @@ namespace Content.Client.Lobby.UI
             TraitsList.DisposeAllChildren();
 
             var traits = _prototypeManager.EnumeratePrototypes<TraitPrototype>().OrderBy(t => Loc.GetString(t.Name)).ToList();
-            TabContainer.SetTabTitle(3, Loc.GetString("humanoid-profile-editor-traits-tab"));
+            //TabContainer.SetTabTitle(3, Loc.GetString("humanoid-profile-editor-traits-tab")); // CorvaxGoob-TTS-Edit
 
             if (traits.Count < 1)
             {
@@ -1075,11 +767,12 @@ namespace Content.Client.Lobby.UI
                 return;
             }
 
+            var sponsorPrototypes = _sponsorsManager?.GetClientPrototypes()?.ToArray() ?? []; //Sponsor think
+
             // Setup model
             Dictionary<string, List<string>> traitGroups = new();
             List<string> defaultTraits = new();
             traitGroups.Add(TraitCategoryPrototype.Default, defaultTraits);
-
             foreach (var trait in traits)
             {
                 // Begin Goobstation: ported from DeltaV - Species trait exclusion
@@ -1137,7 +830,7 @@ namespace Content.Client.Lobby.UI
                     {
                         if (preference)
                         {
-                            Profile = Profile?.WithTraitPreference(trait.ID, _prototypeManager);
+                            Profile = Profile?.WithTraitPreference(trait.ID, _prototypeManager, sponsorPrototypes); // Sponsor think
                         }
                         else
                         {
@@ -1171,6 +864,14 @@ namespace Content.Client.Lobby.UI
                         selector.Checkbox.Label.FontColorOverride = Color.Red;
                     }
 
+                    //Sponsor think start
+                    if (selector.SponsorOnly && !sponsorPrototypes.Contains(selector.Id))
+                    {
+                        selector.Checkbox.Label.FontColorOverride = Color.Yellow;
+                        selector.Checkbox.ToolTip = Loc.GetString("humanoid-profile-editor-sponsor-only");
+                    }
+                    //Sponsor think end
+
                     TraitsList.AddChild(selector);
                 }
             }
@@ -1190,17 +891,15 @@ namespace Content.Client.Lobby.UI
             for (var i = 0; i < _species.Count; i++)
             {
                 var name = Loc.GetString(_species[i].Name);
+
+                if (_species[i].SponsorOnly) // CorvaxGoob-Sponsors
+                    name += SponsorUtils.GetSponsorOnlySuffix();
+
                 SpeciesButton.AddItem(name, i);
 
                 if (Profile?.Species.Equals(_species[i].ID) == true)
                 {
                     SpeciesButton.SelectId(i);
-
-                    // Orion-Start
-                    NewSpeciesButton.Text = name;
-                    NewSpeciesButton.Pressed = false;
-                    _speciesWindow?.Dispose();
-                    // Orion-End
                 }
             }
 
@@ -1246,8 +945,10 @@ namespace Content.Client.Lobby.UI
                 selector.Setup(items, title, 250, description, guides: antag.Guides);
                 selector.Select(Profile?.AntagPreferences.Contains(antag.ID) == true ? 0 : 1);
 
-                var requirements = _entManager.System<SharedRoleSystem>().GetAntagRequirement(antag);
-                if (!_requirements.CheckRoleRequirements(requirements, (HumanoidCharacterProfile?) _preferencesManager.Preferences?.SelectedCharacter, out var reason))
+                if (!_requirements.IsAllowed(
+                        antag,
+                        (HumanoidCharacterProfile?)_preferencesManager.Preferences?.SelectedCharacter,
+                        out var reason))
                 {
                     selector.LockRequirements(reason);
                     Profile = Profile?.WithAntagPreference(antag.ID, false);
@@ -1339,13 +1040,9 @@ namespace Content.Client.Lobby.UI
             if (Profile == null || !_prototypeManager.HasIndex(Profile.Species))
                 return;
 
-            PreviewDummy = _controller.LoadProfileEntity(Profile, JobOverride, _clothingDisplayMode); // Orion-Edit: Clothing display mode
+            PreviewDummy = _controller.LoadProfileEntity(Profile, JobOverride, ShowClothes.Pressed);
             SpriteView.SetEntity(PreviewDummy);
             _entManager.System<MetaDataSystem>().SetEntityName(PreviewDummy, Profile.Name);
-
-            // Orion-Start
-            _flavorText?.TargetPreview.SetEntity(PreviewDummy);
-            // Orion-End
 
             // Check and set the dirty flag to enable the save/reset buttons as appropriate.
             SetDirty();
@@ -1373,23 +1070,22 @@ namespace Content.Client.Lobby.UI
 
             UpdateNameEdit();
             UpdateFlavorTextEdit();
-            UpdateFlavorPreview(); // Orion
             UpdateSexControls();
-            UpdateTTSVoicesControls(); // Art-TTS
             UpdateGenderControls();
             UpdateSkinColor();
             UpdateSpawnPriorityControls();
-            UpdateErpPreferenceControls(); // Arcane-edit
             UpdateAgeEdit();
             UpdateEyePickers();
             UpdateSaveButton();
             UpdateMarkings();
-            UpdateBarkVoice(); // Goob Station - Barks
+            UpdateTTSVoicesControls(); // CorvaxGoob-TTS
+            // CorvaxGoob-Revert : DB conflicts
+            // UpdateBarkVoice(); // Goob Station - Barks
             UpdateHairPickers();
             UpdateCMarkingsHair();
             UpdateCMarkingsFacialHair();
-            UpdateHeightWidthSliders(); // Goobstation: port EE height/width sliders
-            UpdateWeight(); // Goobstation: port EE height/width sliders
+            // UpdateHeightWidthSliders(); // Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
+            // UpdateWeight(); // Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
 
             RefreshAntags();
             RefreshJobs();
@@ -1694,99 +1390,7 @@ namespace Content.Client.Lobby.UI
 
             Profile = Profile.WithFlavorText(content);
             SetDirty();
-
-            UpdateFlavorPreview(); // Orion
         }
-
-        // Orion-Start
-        private void OnFlavorOOCTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithOOCFlavorText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnCharacterFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithCharacterText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnGreenFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithGreenPreferencesText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnYellowFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithYellowPreferencesText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnRedFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithRedPreferencesText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnTagsFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithTagsText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnLinksFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithLinksText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-
-        private void OnNSFWFlavorTextChange(string content)
-        {
-            if (Profile is null)
-                return;
-
-            Profile = Profile.WithNsfwPreferencesText(content);
-            SetDirty();
-
-            UpdateFlavorPreview();
-        }
-        // Orion-End
 
         private void OnMarkingChange(MarkingSet markings)
         {
@@ -1941,24 +1545,24 @@ namespace Content.Client.Lobby.UI
             }
 
             UpdateGenderControls();
+            UpdateTTSVoicesControls(); // CorvaxGoob-TTS
             Markings.SetSex(newSex);
-            UpdateTTSVoicesControls(); // Art-TTS
             ReloadPreview();
         }
-
-        // Art-TTS Start
-        private void SetVoice(string newVoice)
-        {
-            Profile = Profile?.WithVoice(newVoice);
-            IsDirty = true;
-        }
-        // Art-TTS End
 
         private void SetGender(Gender newGender)
         {
             Profile = Profile?.WithGender(newGender);
             ReloadPreview();
         }
+
+        // CorvaxGoob-TTS-Start
+        private void SetVoice(string newVoice)
+        {
+            Profile = Profile?.WithVoice(newVoice);
+            IsDirty = true;
+        }
+        // CorvaxGoob-TTS-End
 
         private void SetSpecies(string newSpecies)
         {
@@ -1972,13 +1576,14 @@ namespace Content.Client.Lobby.UI
             UpdateSexControls(); // update sex for new species
             UpdateSpeciesGuidebookIcon();
             ReloadPreview();
+            /*
+            // begin Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
             UpdateBarkVoice(); // Goob Station - Barks
             // begin Goobstation: port EE height/width sliders
             // Changing species provides inaccurate sliders without these
             UpdateHeightWidthSliders();
             UpdateWeight();
-            // end Goobstation: port EE height/width sliders
-            RefreshTraits(); // Goobstation: ported from DeltaV - Species trait exclusion
+            // end Goobstation: port EE height/width sliders */
         }
 
         private void SetName(string newName)
@@ -1998,15 +1603,7 @@ namespace Content.Client.Lobby.UI
             SetDirty();
         }
 
-        // Arcane-Start
-        private void SetErpPreference(ErpPreference preference)
-        {
-            Profile = Profile?.WithErpPreference(preference);
-            SetDirty();
-        }
-        // Arcane-End
-
-        // Goob Station - Start
+        /*// begin Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
         private void SetProfileHeight(float height)
         {
             Profile = Profile?.WithHeight(height);
@@ -2020,11 +1617,12 @@ namespace Content.Client.Lobby.UI
             ReloadProfilePreview();
             IsDirty = true;
         }
-        private void SetBarkVoice(BarkPrototype newVoice)
-        {
-            Profile = Profile?.WithBarkVoice(newVoice);
-            IsDirty = true;
-        }
+        // end Goobstation: port EE height/width sliders*/
+        // private void SetBarkVoice(BarkPrototype newVoice)
+        // {
+        //     Profile = Profile?.WithBarkVoice(newVoice);
+        //     IsDirty = true;
+        // }
         // Goob Station - End
 
         public bool IsDirty
@@ -2045,46 +1643,13 @@ namespace Content.Client.Lobby.UI
             NameEdit.Text = Profile?.Name ?? "";
         }
 
-        // Orion-Edit-Start
         private void UpdateFlavorTextEdit()
         {
             if (_flavorTextEdit != null)
+            {
                 _flavorTextEdit.TextRope = new Rope.Leaf(Profile?.FlavorText ?? "");
-
-            if (_flavorTextOOCEdit != null)
-                _flavorTextOOCEdit.TextRope = new Rope.Leaf(Profile?.OocFlavorText ?? "");
-
-            if (_characterTextEdit != null)
-                _characterTextEdit.TextRope = new Rope.Leaf(Profile?.CharacterFlavorText ?? "");
-
-            if (_greenTextEdit != null)
-                _greenTextEdit.TextRope = new Rope.Leaf(Profile?.GreenFlavorText ?? "");
-
-            if (_yellowTextEdit != null)
-                _yellowTextEdit.TextRope = new Rope.Leaf(Profile?.YellowFlavorText ?? "");
-
-            if (_redTextEdit != null)
-                _redTextEdit.TextRope = new Rope.Leaf(Profile?.RedFlavorText ?? "");
-
-            if (_tagsTextEdit != null)
-                _tagsTextEdit.TextRope = new Rope.Leaf(Profile?.TagsFlavorText ?? "");
-
-            if (_linksTextEdit != null)
-                _linksTextEdit.TextRope = new Rope.Leaf(Profile?.LinksFlavorText ?? "");
-
-            if (_nsfwTextEdit != null)
-                _nsfwTextEdit.TextRope = new Rope.Leaf(Profile?.NsfwFlavorText ?? "");
-
-            if (_nsfwOOCTextEdit != null)
-                _nsfwOOCTextEdit.TextRope = new Rope.Leaf(Profile?.NsfwOOCFlavorText ?? "");
-
-            if (_nsfwLinksTextEdit != null)
-                _nsfwLinksTextEdit.TextRope = new Rope.Leaf(Profile?.NsfwLinksFlavorText ?? "");
-
-            if (_nsfwTagsTextEdit != null)
-                _nsfwTagsTextEdit.TextRope = new Rope.Leaf(Profile?.NsfwTagsFlavorText ?? "");
+            }
         }
-        // Orion-Edit-End
 
         private void UpdateAgeEdit()
         {
@@ -2274,17 +1839,7 @@ namespace Content.Client.Lobby.UI
             SpawnPriorityButton.SelectId((int) Profile.SpawnPriority);
         }
 
-        // Arcane-Start
-        private void UpdateErpPreferenceControls()
-        {
-            if (Profile == null)
-                return;
-
-            ErpPreferenceButton.SelectId((int) Profile.ErpPreference);
-        }
-        // Arcane-End
-
-        // begin Goobstation: port EE height/width sliders
+        /*// begin Goobstation: port EE height/width sliders // CorvaxGoob-Clearing
         private void UpdateHeightWidthSliders()
         {
             if (Profile is null)
@@ -2383,7 +1938,7 @@ namespace Content.Client.Lobby.UI
             // SpriteViewW.InvalidateMeasure();
             SpriteView.InvalidateMeasure();
         }
-        // end Goobstation: port EE height/width sliders
+        // end Goobstation: port EE height/width sliders*/
 
         private void UpdateHairPickers()
         {
@@ -2604,65 +2159,5 @@ namespace Content.Client.Lobby.UI
             ImportButton.Disabled = false;
             ExportButton.Disabled = false;
         }
-
-        // Orion-Start
-        private void OnSkinColorOnValueChangedKeepColor(HumanoidCharacterProfile previous)
-        {
-            if (Profile is null) return;
-
-            var skin = _prototypeManager.Index<SpeciesPrototype>(Profile.Species).SkinColoration;
-            var color = previous.Appearance.SkinColor;
-
-            switch (skin)
-            {
-                case HumanoidSkinColor.HumanToned:
-                        var tone = SkinColor.HumanSkinToneFromColor(previous.Appearance.SkinColor);
-                        color = SkinColor.HumanSkinTone((int)tone);
-                        Skin.Value = tone;
-
-                        Profile = Profile.WithCharacterAppearance(Profile.Appearance.WithSkinColor(color));//
-                        break;
-                case HumanoidSkinColor.Hues:
-                        break;
-                case HumanoidSkinColor.TintedHues:
-                        color = SkinColor.TintedHues(previous.Appearance.SkinColor);
-
-                        Profile = Profile.WithCharacterAppearance(Profile.Appearance.WithSkinColor(color));
-                        break;
-                case HumanoidSkinColor.VoxFeathers:
-                        color = SkinColor.ClosestVoxColor(previous.Appearance.SkinColor);
-
-                        Profile = Profile.WithCharacterAppearance(Profile.Appearance.WithSkinColor(color));
-                        break;
-                case HumanoidSkinColor.NoColor:
-                        color = Color.White;
-
-                        Profile = Profile.WithCharacterAppearance(Profile.Appearance.WithSkinColor(color));
-                        break;
-                case HumanoidSkinColor.AnimalFur:
-                        color = SkinColor.ClosestAnimalFurColor(previous.Appearance.SkinColor);
-
-                        Profile = Profile.WithCharacterAppearance(Profile.Appearance.WithSkinColor(color));
-                        break;
-            }
-
-            _rgbSkinColorSelector.Color = color;
-
-            ReloadProfilePreview();
-        }
-
-        private static void SetFlavorPreviewMarkup(RichTextLabel label, string content)
-        {
-            var safeContent = SafeMarkup.SanitizeBasic(content);
-            label.SetMessage(FormattedMessage.FromMarkupPermissive(safeContent), SafeMarkupTags.Basic);
-        }
-        // Orion-End
-
-        // Arcane-start
-        private void OnUseTTSChanged(bool value)
-        {
-            ToggleTTS.Pressed = value;
-        }
-        // Arcane-end
     }
 }

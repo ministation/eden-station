@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Linq;
+using Content.Corvax.Interfaces.Shared;
 using Content.Shared.Clothing;
 using Content.Shared.Preferences;
 using Content.Shared.Preferences.Loadouts;
@@ -15,6 +16,7 @@ using Robust.Client.UserInterface.Controls;
 using Robust.Client.UserInterface.XAML;
 using Robust.Shared.Player;
 using Robust.Shared.Prototypes;
+using System.Linq;
 
 namespace Content.Client.Lobby.UI.Loadouts;
 
@@ -81,8 +83,19 @@ public sealed partial class LoadoutGroupContainer : BoxContainer
 
         LoadoutsContainer.DisposeAllChildren();
 
+        // CorvaxGoob-Loadouts-Start
+        var groupLoadouts = _groupProto.Loadouts;
+        if (collection.TryResolveType<ISharedLoadoutsManager>(out var loadoutsManager) && _groupProto.ID == "Inventory")
+        {
+            groupLoadouts = loadoutsManager.GetClientPrototypes().Select(id => (ProtoId<LoadoutPrototype>) id).ToList();
+        }
+        // CorvaxGoob-Loadouts-End
+
         // Get all loadout prototypes for this group.
-        var validProtos = _groupProto.Loadouts.Select(id => protoMan.Index(id));
+        var validProtos = groupLoadouts.Select(id => protoMan.Index(id)); // Corvax-Loadouts-Edit
+
+        // Get all loadout prototypes for this group.
+        //var validProtos = _groupProto.Loadouts.Select(id => protoMan.Index(id));
 
         /*
          * Group the prototypes based on their GroupBy field.
@@ -120,14 +133,14 @@ public sealed partial class LoadoutGroupContainer : BoxContainer
                     })
                     .ToList();
 
-                /* 
-                * Determine which element should be displayed first: 
-                * - If any element is currently selected (its button is pressed), use it. 
-                * - Otherwise, fallback to the first element in the list. 
-                * 
-                * This moves the selected item outside of the sublist for better usability, 
-                * making it easier for players to quickly toggle loadout options (e.g. clothing, accessories) 
-                * without having to search inside expanded subgroups. 
+                /*
+                * Determine which element should be displayed first:
+                * - If any element is currently selected (its button is pressed), use it.
+                * - Otherwise, fallback to the first element in the list.
+                *
+                * This moves the selected item outside of the sublist for better usability,
+                * making it easier for players to quickly toggle loadout options (e.g. clothing, accessories)
+                * without having to search inside expanded subgroups.
                 */
                 var firstElement = uiElements.FirstOrDefault(e => e.Select.Pressed) ?? uiElements[0];
 
@@ -203,8 +216,8 @@ public sealed partial class LoadoutGroupContainer : BoxContainer
     /// <summary>
     /// Creates a UI container for a single Loadout item.
     ///
-    /// This method was extracted from RefreshLoadouts because the logic for creating 
-    /// individual loadout items is used multiple times inside that method, and duplicating 
+    /// This method was extracted from RefreshLoadouts because the logic for creating
+    /// individual loadout items is used multiple times inside that method, and duplicating
     /// the code made it harder to maintain.
     ///
     /// Logic:

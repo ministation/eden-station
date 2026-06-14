@@ -68,23 +68,7 @@ public sealed class ArtCVars
     /// <summary>
     /// Enable client TTS subscription
     /// </summary>
-    /// Activate announcer in round by their special calendar.
-    /// </summary>
-    public static readonly CVarDef<bool> CalendarAnnouncerEnabled =
-        CVarDef.Create("announcer.calendar", true, CVar.SERVERONLY);
-
-    public static readonly CVarDef<bool> DiscordAuthEnabled =
-        CVarDef.Create("discord_auth.enabled", false, CVar.SERVERONLY);
-
-    /// <summary>
-    ///     URL of the Discord auth server API
-    /// </summary>
-    public static readonly CVarDef<string> DiscordAuthApiUrl =
-        CVarDef.Create("discord_auth.api_url", "", CVar.SERVER | CVar.REPLICATED);
-
-    /// <summary>
-    ///     Secret key of the Discord auth server API
-    /// </summary>
-    public static readonly CVarDef<string> DiscordAuthApiKey =
-        CVarDef.Create("discord_auth.api_key", "", CVar.SERVERONLY | CVar.CONFIDENTIAL);
+    // public static readonly CVarDef<bool> TTSClientEnabled =
+    //     CVarDef.Create("tts.client_enabled", true, CVar.CLIENTONLY | CVar.ARCHIVE);
+    #endregion
 }
